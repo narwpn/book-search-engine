@@ -35,7 +35,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.apache.lucene:lucene-core:10.1.0")
-    implementation("org.apache.lucene:lucene-analyzers-common:8.11.4")
+    implementation("org.apache.lucene:lucene-analysis-common:10.1.0")
     implementation("org.apache.lucene:lucene-queryparser:10.1.0")
     implementation("org.apache.lucene:lucene-highlighter:10.1.0")
     implementation("org.apache.lucene:lucene-queries:10.1.0")
