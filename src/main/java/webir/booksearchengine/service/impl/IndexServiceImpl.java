@@ -28,7 +28,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import jakarta.transaction.Transactional;
 import webir.booksearchengine.model.Book;
 import webir.booksearchengine.repository.BookRepository;
 import webir.booksearchengine.service.IndexService;
@@ -79,7 +78,6 @@ public class IndexServiceImpl implements IndexService {
         }
     }
 
-    @Transactional
     public void indexAll() {
         if (isRunning.get() || (future != null && !future.isDone())) {
             return; // Don't start if already running
@@ -89,24 +87,22 @@ public class IndexServiceImpl implements IndexService {
             isRunning.set(true);
             try {
                 int pageNumber = 0;
-                Page<Book> bookPage;
-                do {
+                Pageable pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
+                Page<Book> bookPage = bookRepository.findByIsIndexedFalse(pageRequest);
+
+                while (!bookPage.isEmpty() && isRunning.get()) {
                     try {
-                        // Process this batch in its own transaction
-                        processBookBatch(pageNumber);
-                        pageNumber++;
+                        processBookBatch(bookPage);
                     } catch (Exception e) {
-                        // Log the error but continue with next batch
                         System.err.println("Error processing batch " + pageNumber + ": " + e.getMessage());
                         e.printStackTrace();
-                        // Maybe skip this batch and continue
+                    } finally {
                         pageNumber++;
                     }
 
-                    // Check if there are more unindexed books
-                    Pageable checkRequest = PageRequest.of(pageNumber, BATCH_SIZE);
-                    bookPage = bookRepository.findByIsIndexedFalse(checkRequest);
-                } while (!bookPage.isEmpty() && isRunning.get());
+                    pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
+                    bookPage = bookRepository.findByIsIndexedFalse(pageRequest);
+                }
             } finally {
                 isRunning.set(false);
             }
@@ -116,11 +112,8 @@ public class IndexServiceImpl implements IndexService {
         future = executorService.submit(task);
     }
 
-    @Transactional
-    public void processBookBatch(int pageNumber) throws IOException {
+    public void processBookBatch(Page<Book> bookPage) throws IOException {
         List<Document> documents = new ArrayList<>();
-        Pageable pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
-        Page<Book> bookPage = bookRepository.findByIsIndexedFalse(pageRequest);
         List<Book> books = bookPage.getContent();
 
         for (Book book : books) {
