@@ -91,22 +91,22 @@ public class IndexServiceImpl implements IndexService {
                 int pageNumber = 0;
                 Page<Book> bookPage;
                 do {
-                    List<Document> documents = new ArrayList<>();
-                    Pageable pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
-                    bookPage = bookRepository.findByIsIndexedFalse(pageRequest); // Only index unindexed books
-                    List<Book> books = bookPage.getContent();
-                    for (Book book : books) {
-                        documents.add(getBookDocument(book));
-                        book.setIndexed(true);
-                        bookRepository.save(book);
-                        if (!isRunning.get()) {
-                            return null;
-                        }
+                    try {
+                        // Process this batch in its own transaction
+                        processBookBatch(pageNumber);
+                        pageNumber++;
+                    } catch (Exception e) {
+                        // Log the error but continue with next batch
+                        System.err.println("Error processing batch " + pageNumber + ": " + e.getMessage());
+                        e.printStackTrace();
+                        // Maybe skip this batch and continue
+                        pageNumber++;
                     }
-                    pageNumber++;
-                    indexWriter.addDocuments(documents);
-                    indexWriter.commit();
-                } while (bookPage.hasNext());
+
+                    // Check if there are more unindexed books
+                    Pageable checkRequest = PageRequest.of(pageNumber, BATCH_SIZE);
+                    bookPage = bookRepository.findByIsIndexedFalse(checkRequest);
+                } while (!bookPage.isEmpty() && isRunning.get());
             } finally {
                 isRunning.set(false);
             }
@@ -114,6 +114,31 @@ public class IndexServiceImpl implements IndexService {
         });
 
         future = executorService.submit(task);
+    }
+
+    @Transactional
+    public void processBookBatch(int pageNumber) throws IOException {
+        List<Document> documents = new ArrayList<>();
+        Pageable pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
+        Page<Book> bookPage = bookRepository.findByIsIndexedFalse(pageRequest);
+        List<Book> books = bookPage.getContent();
+
+        for (Book book : books) {
+            try {
+                documents.add(getBookDocument(book));
+                book.setIndexed(true);
+            } catch (Exception e) {
+                System.err.println("Error processing book ID: " + book.getId() + ": " + e.getMessage());
+                // Continue with next book
+            }
+        }
+
+        // Batch save books
+        if (!books.isEmpty()) {
+            bookRepository.saveAll(books);
+            indexWriter.addDocuments(documents);
+            indexWriter.commit();
+        }
     }
 
     public void stopIndexing() {

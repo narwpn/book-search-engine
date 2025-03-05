@@ -78,12 +78,17 @@ public class SearchServiceImpl implements SearchService {
             Query query = queryBuilder.build();
 
             // Calculate start and end indices for pagination
-            int start = (searchRequest.getPage() - 1) * searchRequest.getPageSize();
-            int hitsPerPage = searchRequest.getPageSize();
+            int page = Math.max(1, searchRequest.getPage()); // Ensure page is at least 1
+            int pageSize = Math.max(1, searchRequest.getPageSize()); // Ensure pageSize is at least 1
+            int start = (page - 1) * pageSize;
+            int hitsPerPage = pageSize;
 
+            // Ensure we always have a positive number of hits to search for
+            int numHits = Math.max(1, start + hitsPerPage);
+            System.out.println("Search numHits: " + numHits);
             
             // Collect docs
-            TopDocs results = searcher.search(query, start + hitsPerPage);
+            TopDocs results = searcher.search(query, numHits);
             ScoreDoc[] hits = results.scoreDocs;
             
             // Process search results
@@ -115,8 +120,8 @@ public class SearchServiceImpl implements SearchService {
             SearchResponse response = new SearchResponse();
             response.setBooks(books.toArray(new BookResponse[0]));
             response.setTotalHits((int) results.totalHits.value());
-            response.setPage(searchRequest.getPage());
-            response.setPageSize(searchRequest.getPageSize());
+            response.setPage(page);
+            response.setPageSize(pageSize);
             
             reader.close();
             return response;
