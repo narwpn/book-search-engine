@@ -14,7 +14,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-
 import org.apache.lucene.analysis.th.ThaiAnalyzer;
 import org.apache.lucene.document.Document;
 
@@ -47,7 +46,7 @@ public class SearchServiceImpl implements SearchService {
             IndexSearcher searcher = new IndexSearcher(reader);
 
             ThaiAnalyzer thaiAnalyzer = new ThaiAnalyzer();
-            
+
             // Build a Boolean query that can combine multiple search conditions
             BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
 
@@ -57,24 +56,24 @@ public class SearchServiceImpl implements SearchService {
                 queryBuilder.add(titleQuery, BooleanClause.Occur.SHOULD);
             }
 
-                if (searchRequest.getQueryOption().isUseDescription()) {
-                    QueryParser descriptionParser = new QueryParser("description", thaiAnalyzer);
-                    Query descriptionQuery = descriptionParser.parse(searchRequest.getQueryString());
-                    queryBuilder.add(descriptionQuery, BooleanClause.Occur.SHOULD);
-                }
+            if (searchRequest.getQueryOption().isUseDescription()) {
+                QueryParser descriptionParser = new QueryParser("description", thaiAnalyzer);
+                Query descriptionQuery = descriptionParser.parse(searchRequest.getQueryString());
+                queryBuilder.add(descriptionQuery, BooleanClause.Occur.SHOULD);
+            }
 
-                if (searchRequest.getQueryOption().isUseAuthors()) {
-                    QueryParser authorsParser = new QueryParser("authors", thaiAnalyzer);
-                    Query authorsQuery = authorsParser.parse(searchRequest.getQueryString());
-                    queryBuilder.add(authorsQuery, BooleanClause.Occur.SHOULD);
-                }
+            if (searchRequest.getQueryOption().isUseAuthors()) {
+                QueryParser authorsParser = new QueryParser("authors", thaiAnalyzer);
+                Query authorsQuery = authorsParser.parse(searchRequest.getQueryString());
+                queryBuilder.add(authorsQuery, BooleanClause.Occur.SHOULD);
+            }
 
             // Check if we should search ISBN (based on search options)
             if (searchRequest.getQueryOption().isUseIsbn()) {
                 TermQuery isbnQuery = new TermQuery(new Term("isbn", searchRequest.getQueryString()));
                 queryBuilder.add(isbnQuery, BooleanClause.Occur.SHOULD);
             }
-            
+
             Query query = queryBuilder.build();
 
             // Calculate start and end indices for pagination
@@ -86,15 +85,15 @@ public class SearchServiceImpl implements SearchService {
             // Ensure we always have a positive number of hits to search for
             int numHits = Math.max(1, start + hitsPerPage);
             System.out.println("Search numHits: " + numHits);
-            
+
             // Collect docs
             TopDocs results = searcher.search(query, numHits);
             ScoreDoc[] hits = results.scoreDocs;
-            
+
             // Process search results
             List<BookResponse> books = new ArrayList<>();
             int end = Math.min(hits.length, start + hitsPerPage);
-            
+
             StoredFields storedFields = searcher.storedFields();
             for (int i = start; i < end; i++) {
                 Document doc = storedFields.document(hits[i].doc);
@@ -104,7 +103,7 @@ public class SearchServiceImpl implements SearchService {
                 book.setDescription(doc.get("description"));
                 book.setUrl(doc.get("url"));
                 book.setImageUrl(doc.get("image_url"));
-                
+
                 // Handle null authors field
                 String authorsField = doc.get("authors");
                 if (authorsField != null && !authorsField.isEmpty()) {
@@ -113,16 +112,16 @@ public class SearchServiceImpl implements SearchService {
                 } else {
                     book.setAuthors(new String[0]);
                 }
-                
+
                 books.add(book);
             }
-            
+
             SearchResponse response = new SearchResponse();
             response.setBooks(books.toArray(new BookResponse[0]));
             response.setTotalHits((int) results.totalHits.value());
             response.setPage(page);
             response.setPageSize(pageSize);
-            
+
             reader.close();
             return response;
         } catch (IOException e) {
