@@ -34,4 +34,7 @@ public class Book {
 
     @OneToMany(mappedBy = "book")
     private List<Author> authors = new ArrayList<>();
+
+    @Column(name = "is_indexed")
+    private boolean isIndexed;
 }
