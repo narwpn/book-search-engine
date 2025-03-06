@@ -15,7 +15,7 @@ public class SearchController {
         this.searchService = searchService;
     }
 
-    @GetMapping("/search")
+    @PostMapping("/search")
     public SearchResponse search(@RequestBody SearchRequest searchRequest) {
         return searchService.search(searchRequest);
     }

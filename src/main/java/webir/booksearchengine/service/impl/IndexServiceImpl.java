@@ -28,7 +28,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import jakarta.transaction.Transactional;
 import webir.booksearchengine.model.Book;
 import webir.booksearchengine.repository.BookRepository;
 import webir.booksearchengine.service.IndexService;
@@ -79,7 +78,6 @@ public class IndexServiceImpl implements IndexService {
         }
     }
 
-    @Transactional
     public void indexAll() {
         if (isRunning.get() || (future != null && !future.isDone())) {
             return; // Don't start if already running
@@ -89,24 +87,22 @@ public class IndexServiceImpl implements IndexService {
             isRunning.set(true);
             try {
                 int pageNumber = 0;
-                Page<Book> bookPage;
-                do {
-                    List<Document> documents = new ArrayList<>();
-                    Pageable pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
-                    bookPage = bookRepository.findByIsIndexedFalse(pageRequest); // Only index unindexed books
-                    List<Book> books = bookPage.getContent();
-                    for (Book book : books) {
-                        documents.add(getBookDocument(book));
-                        book.setIndexed(true);
-                        bookRepository.save(book);
-                        if (!isRunning.get()) {
-                            return null;
-                        }
+                Pageable pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
+                Page<Book> bookPage = bookRepository.findByIsIndexedFalse(pageRequest);
+
+                while (!bookPage.isEmpty() && isRunning.get()) {
+                    try {
+                        processBookBatch(bookPage);
+                    } catch (Exception e) {
+                        System.err.println("Error processing batch " + pageNumber + ": " + e.getMessage());
+                        e.printStackTrace();
+                    } finally {
+                        pageNumber++;
                     }
-                    pageNumber++;
-                    indexWriter.addDocuments(documents);
-                    indexWriter.commit();
-                } while (bookPage.hasNext());
+
+                    pageRequest = PageRequest.of(pageNumber, BATCH_SIZE);
+                    bookPage = bookRepository.findByIsIndexedFalse(pageRequest);
+                }
             } finally {
                 isRunning.set(false);
             }
@@ -114,6 +110,28 @@ public class IndexServiceImpl implements IndexService {
         });
 
         future = executorService.submit(task);
+    }
+
+    public void processBookBatch(Page<Book> bookPage) throws IOException {
+        List<Document> documents = new ArrayList<>();
+        List<Book> books = bookPage.getContent();
+
+        for (Book book : books) {
+            try {
+                documents.add(getBookDocument(book));
+                book.setIndexed(true);
+            } catch (Exception e) {
+                System.err.println("Error processing book ID: " + book.getId() + ": " + e.getMessage());
+                // Continue with next book
+            }
+        }
+
+        // Batch save books
+        if (!books.isEmpty()) {
+            bookRepository.saveAll(books);
+            indexWriter.addDocuments(documents);
+            indexWriter.commit();
+        }
     }
 
     public void stopIndexing() {
